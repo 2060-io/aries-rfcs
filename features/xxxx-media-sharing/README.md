@@ -152,20 +152,25 @@ Through this message, a sender can share a number of media items, that are sent 
     "@id": "123456781",
     "@type": "<baseuri>/share-media",
     "description": "free text describing the files that are about to be shared",
-    "ciphering-info": [{
-        "attachment-id": "attachment id",
-        "algo-id": "encryption algorithm for attachment",
-        "algo-params": "parameters needed for decryption, such as content encryption key and initialization vector",
-    }],
-    "~attach": [
+    "sent_time": "timestamp in ISO 8601 UTC",
+    "items": [
         {
             "@id": "attachment id",
+            "ciphering": {
+                "algorithm": "AES-256-GCM",
+                "parameters" : {
+                    "iv": "2f3849399c60cb04b923bd33265b81c7",
+                    "tag": "e84a14b9542320a0b1473141c989c48f",
+                    "key": "233f8ce4ac6aa125927ccd98af5750d08c9c61d98a3f5d43cbf096b4caaebe80"
+                }
+            },
             "mime-type": "image/png",
             "filename": "image1.png",
             "description": "This particular image description",
             "data": {
             "links": [ "https://fileserver.com/ref1-uuid" ]
-            }
+            },
+            "metadata": { /* any relevant metadata (e.g. preview, duration */}
         ... 
         }
     ]
@@ -180,7 +185,7 @@ This message allows a recipient to ask for a previously shared media. This is ma
 {
     "@id": "123456781",
     "@type": "<baseuri>/request-media",
-    "description": "free text describing the media items that are requested"
+    "description": "free text describing the media items that are requested",
     "requested-items": [ "id-1" ]
 }
 ```
