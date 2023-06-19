@@ -1,6 +1,6 @@
 # XXXX: Media Sharing protocol
 
-- Authors: [Ariel Gentile](gentilester@gmail.com)
+- Authors: [Ariel Gentile](a@2060.io)
 - Status: [PROPOSED](/README.md#proposed)
 - Since: 2022-12-21
 - Status Note: Initial version
@@ -29,7 +29,7 @@ For such cases, this protocol is defined to share data _by reference_, relying o
 
 **Version**: 1.0
 
-**Base URI**: `https://2060.io/didcomm/media-sharing/0.1/`
+**Base URI**: `https://2060.io/didcomm/media-sharing/1.0/`
 
 ### Roles
 
@@ -81,10 +81,10 @@ participant "File Server" as FS
 
 RA -> SA: request-media(desc, pthid=share-files thid)
 SA -> SA: CEK = GenKey()
-SA -> SA: F = Enc (File, desc.CEK)
-SA -> FS: attachment.link = upload(F)
-SA -> RA: share-media(CEK, attachment)
-RA -> FS: F = download(attachment.link)
+SA -> SA: F = Enc (File, CEK)
+SA -> FS: item.links[0] = upload(F)
+SA -> RA: share-media(CEK, item)
+RA -> FS: F = download(item.links[0])
 RA -> RA: File = Dec (F, CEK)
 
 @enduml
@@ -139,54 +139,160 @@ Done -> [*]
 -->
 ![Receiver states](./media-sharing-receiver-states.png)
 
-## Reference
+## Message Reference
 
-This protocol currently defines a few specific messages, but uses DIDComm core mechanisms such as threading and ack (and may use other extensions) to enrich the flow.
+This protocol currently defines a few specific messages, but uses DIDComm core mechanisms such as attachments and localization (and may use other extensions) to enrich the flow.
 
 ### Share Media
 
-Through this message, a sender can share a number of media items, that are sent as regular [appended attachments](https://github.com/hyperledger/aries-rfcs/blob/7759addb1506d107fddec692403bbc9e55fe491f/concepts/0017-attachments/README.md#appending).
+Through this message, a sender can share a number of media items, each of them referencing to an [attachment](https://identity.foundation/didcomm-messaging/spec/#attachments) ([appended attachment](https://github.com/hyperledger/aries-rfcs/blob/7759addb1506d107fddec692403bbc9e55fe491f/concepts/0017-attachments/README.md#appending) in case of DIDComm v1), adding a few optional fields regarding the nature of the media being shared.
+
+Appended attachments MUST define at least an `id` and a `media_type` (DIDComm v1) or `mime-type` (DIDComm v2), in order to be properly identified and classified.
+
+The message may indicate the language used for the description. DIDComm V1 and DIDComm V2 have different methods for this. See examples below.
+The time the message is sent must be included. DIDComm V2 uses the `created_time` header. DIDComm V1 must include a `sent_time` as a message attribute containing the timestamp in ISO 8601 UTC format.
+
+Description of the fields:
+
+- `description`: (optional) human-readable string to describe (as a whole) the media items to be shared
+- `items`: (required) array containing details of the items to be shared. Each containing:
+  -  `@id`: (required) unique id for the item. This is used to reference the item from other messages (e.g. request-media)
+  -  `attachment_id`: (required) id for the attachment that contains further description of the item itself
+  -  `ciphering`: (optional) media ciphering details, containing all required key material for the receiver to decrypt it. Present only in case media has been encrypted.
+     -  `algorithm`: symmetric encryption algorithm used to encrypt the media, in the format `<algo>-<length>-<mode>` (lowercase). E.g. `aes-256-cbc`
+     -  `parameters`: object containing parameters needed to decrypt the data. This depends on the algorithm used, but the following fields are supported initially:
+        -  `key`: content encryption key, formatted as an hex string
+        -  `iv`: initialization vector, formatted as an hex string
+        -  `tag`: authentication tag, formatted as an hex string
+  -  `metadata`: (optional) any relevant information that might the used by an agent to better show the item. Some initial known fields are:
+     -  `preview`: base64 string containing a thumbnail (used mostly for images and videos)
+     -  `blurhash`: compact representation of a placeholder for an image (used mostly for images and videos)
+     -  `duration`: number containing media duration in seconds (used for videos and audios)
+
+DIDComm v1 example: 
 
 ```json
 {
-    "@id": "123456781",
+    "@id": "8ba049e6-cc46-48fb-bfe0-463084d66324",
     "@type": "<baseuri>/share-media",
     "description": "free text describing the files that are about to be shared",
-    "sent_time": "timestamp in ISO 8601 UTC",
+    "sent_time": "2019-01-15 18:42:01Z",
+    "~l10n": { "locale": "en" },
     "items": [
         {
-            "@id": "attachment id",
+            "@id": "f88b7925-4cb4-4e32-b1d6-ac217c9fedbf",
+            "attachment_id": "#item1",
             "ciphering": {
-                "algorithm": "AES-256-GCM",
+                "algorithm": "aes-256-cbc",
                 "parameters" : {
                     "iv": "2f3849399c60cb04b923bd33265b81c7",
-                    "tag": "e84a14b9542320a0b1473141c989c48f",
                     "key": "233f8ce4ac6aa125927ccd98af5750d08c9c61d98a3f5d43cbf096b4caaebe80"
                 }
             },
-            "mime-type": "image/png",
-            "filename": "image1.png",
-            "description": "This particular image description",
-            "data": {
-            "links": [ "https://fileserver.com/ref1-uuid" ]
-            },
-            "metadata": { /* any relevant metadata (e.g. preview, duration */}
-        ... 
+            "metadata": { /* any relevant metadata (e.g. preview, duration) */}
         }
+        ... 
+    ],
+    "~attach": [{
+        "@id": "item1",
+        "byte_count": "23894",
+        "mime-type": "image/png",
+        "filename": "image1.png",
+        "description": "This particular image description",
+        "data": {
+            "links": [ "https://fileserver.com/ref1-uuid" ]
+        },
+    }]
+}
+```
+
+DIDComm v2 example: 
+
+```json
+{
+    "@id": "8ba049e6-cc46-48fb-bfe0-463084d66324",
+    "@type": "<baseuri>/share-media",
+    "created_time": "1547577721",
+    "lang": "en",
+    "body": {
+        "description": "free text describing the files that are about to be shared",
+        "items": [
+            {
+                "@id": "f88b7925-4cb4-4e32-b1d6-ac217c9fedbf",
+                "attachment_id": "item1",
+                "ciphering": {
+                    "algorithm": "aes-256-cbc",
+                    "parameters" : {
+                        "iv": "2f3849399c60cb04b923bd33265b81c7",
+                        "key": "233f8ce4ac6aa125927ccd98af5750d08c9c61d98a3f5d43cbf096b4caaebe80"
+                    }
+                },
+                "metadata": { /* any relevant metadata (e.g. preview, duration) */}
+            }
+            ... 
+        ]
+    },
+    "attachments": [{
+                "@id": "item1",
+                "byte_count": "23894",
+                "media_type": "image/png",
+                "filename": "image1.png",
+                "description": "This particular image description",
+                "data": {
+                    "links": [ "https://fileserver.com/ref1-uuid" ]
+                },
+            }
+            ... 
     ]
 }
 ```
+
+
 
 ### Request Media
 
 This message allows a recipient to ask for a previously shared media. This is mainly intended to be used in cases where the shared data is not available anymore in the third-party service used to store it originally.
 
+The message may indicate the language used for the description. DIDComm V1 and DIDComm V2 have different methods for this. See examples below.
+The time the message is sent must be included. DIDComm V2 uses the `created_time` header. DIDComm V1 must include a `sent_time` as a message attribute containing the timestamp in ISO 8601 UTC format.
+
+
+- `description`: (optional) human-readable string describing the request
+- `item_ids`: (required) array containing the ids of the requested items
+
+DIDComm v1 example:
+
 ```json
 {
     "@id": "123456781",
     "@type": "<baseuri>/request-media",
+    "sent_time": "2019-01-15 18:42:01Z",
+    "~l10n": { "locale": "en" },
     "description": "free text describing the media items that are requested",
-    "requested-items": [ "id-1" ]
+    "items": [ "f88b7925-4cb4-4e32-b1d6-ac217c9fedbf", "8ba049e6-cc46-48fb-bfe0-463084d66324" ]
 }
 ```
 
+
+DIDComm v2 example: 
+
+```json
+{
+    "@id": "123456781",
+    "@type": "<baseuri>/request-media",
+    "created_time": "1547577721",
+    "lang": "en",
+    "body": {
+        "description": "free text describing the media items that are requested",
+        "requested-items": [ "f88b7925-4cb4-4e32-b1d6-ac217c9fedbf", "8ba049e6-cc46-48fb-bfe0-463084d66324" ]
+    }
+}
+```
+
+## Implementations
+
+Current implementations of this protocol are listed below:
+
+Name / Link | Implementation Notes
+--- | --- 
+[Aries JavaScript Media Sharing](https://github.com/2060-io/aries-javascript-media-sharing) | Initial implementation as an extension module for [Aries Framework JavaScript](https://github.com/hyperledger/aries-framework-javascript). Used in [2060.io](https://2060.io) Mobile Agent and Service Agent.
